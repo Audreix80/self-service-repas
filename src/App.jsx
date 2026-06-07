@@ -453,7 +453,7 @@ function UserApp({user,menus,reservations,setReservations,onLogout}){
 }
 
 // ─── ADMIN DASHBOARD ──────────────────────────────────────────────────────────
-function AdminDashboard({user,menus,setMenus,reservations,setReservations,users,onLogout}){
+function AdminDashboard({user,menus,setMenus,reservations,setReservations,users,setUsers,onLogout}){
   const [weekIdx,setWeekIdx]=useState(0);
   const [activeDay,setActiveDay]=useState(DAYS[0]);
   const [editing,setEditing]=useState(null);
@@ -492,7 +492,7 @@ function AdminDashboard({user,menus,setMenus,reservations,setReservations,users,
       <div style={{display:"flex",flex:1,overflow:"hidden"}}>
         {/* Sidebar */}
         <div style={{width:"220px",background:C.navyLight,padding:"24px 16px",borderRight:"1px solid rgba(255,255,255,0.06)",flexShrink:0}}>
-          {[{id:"overview",icon:"📊",label:"Vue d'ensemble"},{id:"menus",icon:"📋",label:"Gérer les menus"},{id:"users",icon:"👥",label:"Réservations"}].map(t=>(
+          {[{id:"overview",icon:"📊",label:"Vue d'ensemble"},{id:"menus",icon:"📋",label:"Gérer les menus"},{id:"users",icon:"👥",label:"Réservations"},{id:"manage",icon:"🔑",label:"Utilisateurs"}].map(t=>(
             <button key={t.id} onClick={()=>setActiveTab(t.id)} style={{width:"100%",display:"flex",alignItems:"center",gap:"10px",padding:"11px 14px",borderRadius:"12px",background:activeTab===t.id?`${C.orange}22`:"transparent",border:activeTab===t.id?`1px solid ${C.orange}44`:"1px solid transparent",color:activeTab===t.id?C.orange:C.gray400,fontWeight:activeTab===t.id?700:400,fontSize:"13px",cursor:"pointer",fontFamily:"'Sora',sans-serif",marginBottom:"4px",textAlign:"left"}}>
               <span>{t.icon}</span>{t.label}
             </button>
@@ -614,6 +614,57 @@ function AdminDashboard({user,menus,setMenus,reservations,setReservations,users,
               </div>
             </div>
           )}
+
+          {activeTab==="manage"&&(
+            <div>
+              <h2 style={{color:C.navy,fontSize:"22px",fontWeight:700,margin:"0 0 6px"}}>Gérer les utilisateurs</h2>
+              <p style={{color:C.gray400,fontSize:"13px",margin:"0 0 24px"}}>{users.filter(u=>u.email!==user.email).length} compte{users.filter(u=>u.email!==user.email).length>1?"s":""} enregistrés</p>
+              <div style={{background:C.white,borderRadius:"20px",boxShadow:"0 2px 12px rgba(0,0,0,0.06)",overflow:"hidden"}}>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 200px 160px",background:C.gray50,borderBottom:`1px solid ${C.gray100}`,padding:"12px 24px"}}>
+                  <div style={{fontSize:"11px",color:C.gray400,fontWeight:700,textTransform:"uppercase"}}>Utilisateur</div>
+                  <div style={{fontSize:"11px",color:C.gray400,fontWeight:700,textTransform:"uppercase",textAlign:"center"}}>Rôles actuels</div>
+                  <div style={{fontSize:"11px",color:C.gray400,fontWeight:700,textTransform:"uppercase",textAlign:"center"}}>Action</div>
+                </div>
+                {users.filter(u=>u.email!==user.email).map((u,i)=>{
+                  const isAdmin=u.role==="admin"||u.role==="both";
+                  const isUser=u.role==="user"||u.role==="both";
+                  const toggleAdmin=()=>{
+                    setUsers(prev=>prev.map(p=>{
+                      if(p.email!==u.email)return p;
+                      if(p.role==="user")return{...p,role:"both"};
+                      if(p.role==="both")return{...p,role:"user"};
+                      if(p.role==="admin")return{...p,role:"both"};
+                      return p;
+                    }));
+                  };
+                  return(
+                    <div key={u.email} style={{display:"grid",gridTemplateColumns:"1fr 200px 160px",padding:"14px 24px",alignItems:"center",background:i%2===0?C.white:C.gray50,borderBottom:`1px solid ${C.gray100}`}}>
+                      <div>
+                        <div style={{fontWeight:600,fontSize:"14px",color:C.navy}}>{u.name}</div>
+                        <div style={{fontSize:"12px",color:C.gray400,marginTop:"2px"}}>{u.email}</div>
+                      </div>
+                      <div style={{display:"flex",gap:"6px",justifyContent:"center",flexWrap:"wrap"}}>
+                        <span style={{padding:"3px 10px",borderRadius:"20px",background:isUser?`${C.blue}18`:C.gray100,color:isUser?C.blue:C.gray400,fontWeight:700,fontSize:"11px",border:`1px solid ${isUser?C.blue+"33":C.gray200}`}}>👤 Utilisateur</span>
+                        <span style={{padding:"3px 10px",borderRadius:"20px",background:isAdmin?`${C.orange}18`:C.gray100,color:isAdmin?C.orange:C.gray400,fontWeight:700,fontSize:"11px",border:`1px solid ${isAdmin?C.orange+"33":C.gray200}`}}>⚙️ Admin</span>
+                      </div>
+                      <div style={{textAlign:"center"}}>
+                        <button onClick={toggleAdmin} style={{padding:"8px 14px",borderRadius:"10px",border:`1.5px solid ${isAdmin?C.red:C.orange}`,background:isAdmin?C.redLight:C.orangeLight,color:isAdmin?C.red:C.orange,fontWeight:700,fontSize:"12px",cursor:"pointer",fontFamily:"'Sora',sans-serif",whiteSpace:"nowrap"}}>
+                          {isAdmin?"Retirer admin":"Nommer admin"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{marginTop:"16px",background:C.navyLight,borderRadius:"14px",padding:"14px 18px",display:"flex",gap:"10px",alignItems:"flex-start"}}>
+                <span style={{fontSize:"18px"}}>💡</span>
+                <div style={{color:C.gray400,fontSize:"12px",lineHeight:1.6}}>
+                  Un utilisateur avec le rôle <strong style={{color:C.white}}>Admin</strong> accède au dashboard administrateur.<br/>
+                  Un utilisateur avec les <strong style={{color:C.white}}>deux rôles</strong> peut basculer entre réserver ses repas et administrer l'application.
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
       {editing&&<EditModal day={editing.day} menuKey={editing.menuKey} data={menus[editing.day][editing.menuKey]} onSave={form=>{setMenus(p=>({...p,[editing.day]:{...p[editing.day],[editing.menuKey]:form}}));setEditing(null);}} onClose={()=>setEditing(null)}/>}
@@ -624,6 +675,7 @@ function AdminDashboard({user,menus,setMenus,reservations,setReservations,users,
 // ─── ROOT ─────────────────────────────────────────────────────────────────────
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
+  const [view, setView] = useState("user"); // "user" | "admin"
   const [menus, setMenus] = useState(DEFAULT_MENUS);
   const [reservations, setReservations] = useState({
     "2025-W23":{
@@ -638,7 +690,40 @@ export default function App() {
     {email:"admin@exemple.fr",         name:"Administrateur",role:"admin"},
   ]);
 
-  if (!currentUser) return <AuthScreen users={users} setUsers={setUsers} onLogin={setCurrentUser}/>;
-  if (currentUser.role==="admin") return <AdminDashboard user={currentUser} menus={menus} setMenus={setMenus} reservations={reservations} setReservations={setReservations} users={users} onLogout={()=>setCurrentUser(null)}/>;
-  return <UserApp user={currentUser} menus={menus} reservations={reservations} setReservations={setReservations} onLogout={()=>setCurrentUser(null)}/>;
+  const handleLogin = (user) => {
+    setCurrentUser(user);
+    setView(user.role==="user" ? "user" : "admin");
+  };
+
+  if (!currentUser) return <AuthScreen users={users} setUsers={setUsers} onLogin={handleLogin}/>;
+
+  const isBoth = currentUser.role==="both";
+  const isAdmin = currentUser.role==="admin" || currentUser.role==="both";
+
+  // Role switcher banner for dual-role users
+  const RoleSwitcher = () => isBoth ? (
+    <div style={{background:"#1E293B",padding:"8px 16px",display:"flex",alignItems:"center",justifyContent:"center",gap:"10px",borderBottom:"1px solid rgba(255,255,255,0.08)",fontFamily:"'Sora',sans-serif"}}>
+      <span style={{color:"#94A3B8",fontSize:"12px"}}>Basculer vers :</span>
+      <button onClick={()=>setView("user")} style={{padding:"6px 14px",borderRadius:"8px",border:"none",background:view==="user"?"#F97316":"rgba(255,255,255,0.08)",color:"#fff",fontWeight:700,fontSize:"12px",cursor:"pointer",fontFamily:"'Sora',sans-serif"}}>
+        👤 Mes repas
+      </button>
+      <button onClick={()=>setView("admin")} style={{padding:"6px 14px",borderRadius:"8px",border:"none",background:view==="admin"?"#F97316":"rgba(255,255,255,0.08)",color:"#fff",fontWeight:700,fontSize:"12px",cursor:"pointer",fontFamily:"'Sora',sans-serif"}}>
+        ⚙️ Administration
+      </button>
+    </div>
+  ) : null;
+
+  if (isAdmin && view==="admin") return (
+    <div>
+      <RoleSwitcher/>
+      <AdminDashboard user={currentUser} menus={menus} setMenus={setMenus} reservations={reservations} setReservations={setReservations} users={users} setUsers={setUsers} onLogout={()=>setCurrentUser(null)}/>
+    </div>
+  );
+
+  return (
+    <div>
+      <RoleSwitcher/>
+      <UserApp user={currentUser} menus={menus} reservations={reservations} setReservations={setReservations} onLogout={()=>setCurrentUser(null)}/>
+    </div>
+  );
 }
