@@ -1,4 +1,11 @@
 import { useState, useEffect } from "react";
+import { createClient } from "@supabase/supabase-js";
+
+// ─── SUPABASE ─────────────────────────────────────────────────────────────────
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
 const CUTOFF_HOUR = 10;
@@ -9,7 +16,6 @@ const WEEKS = [
   { label:"Semaine du 9 au 13 juin 2025",  key:"2025-W24" },
   { label:"Semaine du 16 au 20 juin 2025", key:"2025-W25" },
 ];
-
 const DEFAULT_MENUS = {
   Lundi:    { A:{starter:"Salade niçoise",main:"Poulet rôti & gratin dauphinois",dessert:"Tarte aux pommes"}, B:{starter:"Soupe de légumes",main:"Lasagnes végétariennes",dessert:"Yaourt nature"} },
   Mardi:    { A:{starter:"Carottes râpées",main:"Saumon en papillote & riz",dessert:"Mousse au chocolat"}, B:{starter:"Taboulé",main:"Quiche lorraine & salade",dessert:"Compote de poires"} },
@@ -44,35 +50,30 @@ function getTodayName() {
   return ["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"][new Date().getDay()];
 }
 function isDayLocked(day,weekIdx=0) {
-  if (weekIdx>0) return false;
-  const ti=DAYS.indexOf(getTodayName()), di=DAYS.indexOf(day);
+  if(weekIdx>0)return false;
+  const ti=DAYS.indexOf(getTodayName()),di=DAYS.indexOf(day);
   return di<ti||(di===ti&&isCutoffPassed());
 }
-function formatCutoff() { return `${CUTOFF_HOUR}h${CUTOFF_MINUTE.toString().padStart(2,"0")}`; }
-function computeStats(weekRes) {
-  const s={};
-  DAYS.forEach(d=>{s[d]={A:0,B:0,self:0,emporter:0};});
+function formatCutoff(){return `${CUTOFF_HOUR}h${CUTOFF_MINUTE.toString().padStart(2,"0")}`;}
+function computeStats(weekRes){
+  const s={};DAYS.forEach(d=>{s[d]={A:0,B:0,self:0,emporter:0};});
   let tA=0,tB=0,tS=0,tE=0;
-  Object.values(weekRes||{}).forEach(r=>{
-    Object.entries(r).forEach(([day,{menu,mode}])=>{
-      if(!s[day])return;
-      s[day][menu]++;s[day][mode]++;
-      if(menu==="A")tA++;else tB++;
-      if(mode==="self")tS++;else tE++;
-    });
-  });
-  return {byDay:s,totalA:tA,totalB:tB,totalSelf:tS,totalEmporter:tE};
+  Object.values(weekRes||{}).forEach(r=>{Object.entries(r).forEach(([day,{menu,mode}])=>{
+    if(!s[day])return;s[day][menu]++;s[day][mode]++;
+    if(menu==="A")tA++;else tB++;if(mode==="self")tS++;else tE++;
+  });});
+  return{byDay:s,totalA:tA,totalB:tB,totalSelf:tS,totalEmporter:tE};
 }
-function buildRecapHTML(weekLabel,weekRes,users) {
+function buildRecapHTML(weekLabel,weekRes,users){
   const stats=computeStats(weekRes);
   const rows=DAYS.map(d=>{const s=stats.byDay[d];return`<tr><td>${d}</td><td style="color:#F97316;font-weight:700">${s.A}</td><td style="color:#0EA5E9;font-weight:700">${s.B}</td><td style="color:#10B981;font-weight:700">${s.self}</td><td style="color:#8B5CF6;font-weight:700">${s.emporter}</td><td style="font-weight:700">${s.A+s.B}</td></tr>`;}).join("");
-  const uRows=users.filter(u=>u.role==="user").map(u=>{const r=weekRes[u.email]||{};const cells=DAYS.map(d=>r[d]?`<td><span style="background:${MENU_THEME[r[d].menu].primary};color:#fff;padding:2px 8px;border-radius:10px;font-size:11px">M${r[d].menu}</span> ${MODE_THEME[r[d].mode].icon}</td>`:`<td style="color:#ccc">—</td>`).join("");return`<tr><td>${u.name}</td>${cells}<td style="font-weight:700">${Object.keys(r).length}</td></tr>`;}).join("");
+  const uRows=users.filter(u=>u.role==="user"||u.role==="both").map(u=>{const r=weekRes[u.email]||{};const cells=DAYS.map(d=>r[d]?`<td><span style="background:${MENU_THEME[r[d].menu].primary};color:#fff;padding:2px 8px;border-radius:10px;font-size:11px">M${r[d].menu}</span> ${MODE_THEME[r[d].mode].icon}</td>`:`<td style="color:#ccc">—</td>`).join("");return`<tr><td>${u.name}</td>${cells}<td style="font-weight:700">${Object.keys(r).length}</td></tr>`;}).join("");
   return`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Récap ${weekLabel}</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#0F172A}h1{color:#F97316}table{width:100%;border-collapse:collapse;margin-bottom:24px}th{background:#0F172A;color:#fff;padding:10px 12px;text-align:left;font-size:12px}td{padding:9px 12px;border-bottom:1px solid #e2e8f0;font-size:13px}tr:nth-child(even){background:#f8fafc}</style></head><body><h1>🍽️ Self-Service — Récapitulatif</h1><p style="color:#94a3b8">${weekLabel} · ${new Date().toLocaleDateString("fr-FR")}</p><h2>Par jour</h2><table><thead><tr><th>Jour</th><th>Menu A</th><th>Menu B</th><th>Sur place</th><th>À emporter</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table><h2>Par convive</h2><table><thead><tr><th>Convive</th>${DAYS.map(d=>`<th>${d.slice(0,3)}.</th>`).join("")}<th>Total</th></tr></thead><tbody>${uRows}</tbody></table></body></html>`;
 }
-function exportCSV(weekLabel,weekRes,users) {
+function exportCSV(weekLabel,weekRes,users){
   let csv="Convive;"+DAYS.join(";")+";Total\n";
   const stats=computeStats(weekRes);
-  users.filter(u=>u.role==="user").forEach(u=>{const r=weekRes[u.email]||{};csv+=`${u.name};${DAYS.map(d=>r[d]?`Menu ${r[d].menu} (${r[d].mode==="self"?"Sur place":"À emporter"})`:"—").join(";")};${Object.keys(r).length}\n`;});
+  users.filter(u=>u.role==="user"||u.role==="both").forEach(u=>{const r=weekRes[u.email]||{};csv+=`${u.name};${DAYS.map(d=>r[d]?`Menu ${r[d].menu} (${r[d].mode==="self"?"Sur place":"À emporter"})`:"—").join(";")};${Object.keys(r).length}\n`;});
   csv+="\nJour;Menu A;Menu B;Sur place;À emporter;Total\n";
   DAYS.forEach(d=>{const s=stats.byDay[d];csv+=`${d};${s.A};${s.B};${s.self};${s.emporter};${s.A+s.B}\n`;});
   return csv;
@@ -80,123 +81,95 @@ function exportCSV(weekLabel,weekRes,users) {
 function downloadFile(content,filename,type){const b=new Blob([content],{type});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=filename;a.click();URL.revokeObjectURL(u);}
 function printRecap(weekLabel,weekRes,users){const w=window.open("","_blank");w.document.write(buildRecapHTML(weekLabel,weekRes,users));w.document.close();setTimeout(()=>w.print(),500);}
 
-// ─── AUTH SCREEN (Login + Register) ──────────────────────────────────────────
-function AuthScreen({ users, setUsers, onLogin }) {
-  const [mode, setMode] = useState("login"); // login | register
+// ─── AUTH SCREEN ──────────────────────────────────────────────────────────────
+function AuthScreen({ onLogin }) {
+  const [mode, setMode] = useState("login");
   const [form, setForm] = useState({firstName:"",lastName:"",email:"",password:""});
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState("");
 
-  const handleLogin = () => {
-    setError("");
-    const found = users.find(u=>u.email.toLowerCase()===form.email.toLowerCase().trim());
-    if (!found) { setError("Adresse e-mail non reconnue."); return; }
-    setLoading(true);
-    setTimeout(()=>{setLoading(false);onLogin(found);},700);
+  const handleLogin = async () => {
+    setError(""); setLoading(true);
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: form.email.trim().toLowerCase(),
+      password: form.password,
+    });
+    setLoading(false);
+    if (error) { setError("E-mail ou mot de passe incorrect."); return; }
+    const { data: profile } = await supabase.from("profiles").select("*").eq("id", data.user.id).single();
+    if (profile) onLogin({ ...profile, id: data.user.id });
   };
 
-  const handleRegister = () => {
+  const handleRegister = async () => {
     setError("");
-    if (!form.firstName.trim()||!form.lastName.trim()) { setError("Prénom et nom sont obligatoires."); return; }
-    if (!form.email.includes("@")) { setError("Adresse e-mail invalide."); return; }
+    if (!form.firstName.trim()||!form.lastName.trim()) { setError("Prénom et nom obligatoires."); return; }
+    if (!form.email.includes("@")) { setError("E-mail invalide."); return; }
     if (form.password.length<6) { setError("Mot de passe trop court (6 caractères min)."); return; }
-    if (users.find(u=>u.email.toLowerCase()===form.email.toLowerCase())) { setError("Cette adresse e-mail est déjà utilisée."); return; }
     setLoading(true);
-    setTimeout(()=>{
-      const newUser = { email:form.email.toLowerCase().trim(), name:`${form.firstName.trim()} ${form.lastName.trim()}`, role:"user" };
-      setUsers(prev=>[...prev, newUser]);
-      setLoading(false);
-      setSuccess("Compte créé avec succès !");
-      setTimeout(()=>{ onLogin(newUser); },900);
-    },700);
+    const { data, error } = await supabase.auth.signUp({
+      email: form.email.trim().toLowerCase(),
+      password: form.password,
+    });
+    if (error) { setLoading(false); setError(error.message); return; }
+    const name = `${form.firstName.trim()} ${form.lastName.trim()}`;
+    await supabase.from("profiles").insert({ id: data.user.id, email: form.email.trim().toLowerCase(), name, role:"user" });
+    setLoading(false);
+    setSuccess("Compte créé ! Vous pouvez vous connecter.");
+    setMode("login");
+    setForm(f=>({...f,firstName:"",lastName:""}));
   };
-
-  const Field = ({label,placeholder,type="text",key2}) => (
-    <div style={{marginBottom:"14px"}}>
-      <label style={{display:"block",color:C.gray400,fontSize:"12px",fontWeight:600,textTransform:"uppercase",letterSpacing:"1px",marginBottom:"6px"}}>{label}</label>
-      <input type={type} placeholder={placeholder} value={form[key2]} onChange={e=>setForm({...form,[key2]:e.target.value})}
-        onKeyDown={e=>e.key==="Enter"&&(mode==="login"?handleLogin():handleRegister())}
-        style={{width:"100%",padding:"13px 16px",background:"rgba(255,255,255,0.05)",border:`1.5px solid rgba(255,255,255,0.12)`,borderRadius:"12px",color:C.white,fontSize:"14px",outline:"none",fontFamily:"'Sora',sans-serif",boxSizing:"border-box"}}/>
-    </div>
-  );
 
   return (
     <div style={{minHeight:"100vh",background:C.navy,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px",fontFamily:"'Sora',sans-serif"}}>
       <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
       <div style={{width:"100%",maxWidth:"420px",background:C.navyLight,borderRadius:"28px",padding:"36px 32px",boxShadow:"0 32px 80px rgba(0,0,0,0.5)",border:"1px solid rgba(255,255,255,0.06)"}}>
-        {/* Logo */}
         <div style={{textAlign:"center",marginBottom:"28px"}}>
-          <div style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:"60px",height:"60px",borderRadius:"18px",background:`linear-gradient(135deg,${C.orange},#fb923c)`,fontSize:"26px",marginBottom:"14px",boxShadow:`0 8px 24px ${C.orange}55`}}>🍽️</div>
+          <div style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:"60px",height:"60px",borderRadius:"18px",background:`linear-gradient(135deg,${C.orange},#fb923c)`,fontSize:"26px",marginBottom:"14px"}}>🍽️</div>
           <h1 style={{color:C.white,fontSize:"22px",fontWeight:700,margin:"0 0 4px"}}>Self-Service</h1>
           <p style={{color:C.gray400,fontSize:"13px",margin:"0 0 8px"}}>Réservation de repas en ligne</p>
           <div style={{background:`${C.orange}22`,border:`1px solid ${C.orange}44`,borderRadius:"10px",padding:"6px 14px",display:"inline-block"}}>
             <span style={{color:C.orange,fontSize:"11px",fontWeight:600}}>⏰ Heure limite : {formatCutoff()}</span>
           </div>
         </div>
-
-        {/* Tab switcher */}
+        {/* Tabs */}
         <div style={{display:"flex",background:"rgba(255,255,255,0.05)",borderRadius:"12px",padding:"4px",marginBottom:"24px"}}>
           {[["login","Se connecter"],["register","Créer un compte"]].map(([m,label])=>(
-            <button key={m} onClick={()=>{setMode(m);setError("");setSuccess("");}} style={{flex:1,padding:"9px",borderRadius:"9px",border:"none",background:mode===m?"rgba(255,255,255,0.12)":"transparent",color:mode===m?C.white:C.gray400,fontWeight:mode===m?700:400,fontSize:"13px",cursor:"pointer",fontFamily:"'Sora',sans-serif",transition:"all 0.2s"}}>{label}</button>
+            <button key={m} onClick={()=>{setMode(m);setError("");setSuccess("");}} style={{flex:1,padding:"9px",borderRadius:"9px",border:"none",background:mode===m?"rgba(255,255,255,0.12)":"transparent",color:mode===m?C.white:C.gray400,fontWeight:mode===m?700:400,fontSize:"13px",cursor:"pointer",fontFamily:"'Sora',sans-serif"}}>{label}</button>
           ))}
         </div>
-
-        {/* Register fields */}
-        {mode==="register" && (
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginBottom:"0"}}>
-            <div>
-              <label style={{display:"block",color:C.gray400,fontSize:"12px",fontWeight:600,textTransform:"uppercase",letterSpacing:"1px",marginBottom:"6px"}}>Prénom</label>
-              <input placeholder="Marie" value={form.firstName} onChange={e=>setForm({...form,firstName:e.target.value})}
-                style={{width:"100%",padding:"13px 14px",background:"rgba(255,255,255,0.05)",border:"1.5px solid rgba(255,255,255,0.12)",borderRadius:"12px",color:C.white,fontSize:"14px",outline:"none",fontFamily:"'Sora',sans-serif",boxSizing:"border-box"}}/>
-            </div>
-            <div>
-              <label style={{display:"block",color:C.gray400,fontSize:"12px",fontWeight:600,textTransform:"uppercase",letterSpacing:"1px",marginBottom:"6px"}}>Nom</label>
-              <input placeholder="Dupont" value={form.lastName} onChange={e=>setForm({...form,lastName:e.target.value})}
-                style={{width:"100%",padding:"13px 14px",background:"rgba(255,255,255,0.05)",border:"1.5px solid rgba(255,255,255,0.12)",borderRadius:"12px",color:C.white,fontSize:"14px",outline:"none",fontFamily:"'Sora',sans-serif",boxSizing:"border-box"}}/>
-            </div>
-          </div>
-        )}
-
-        <div style={{marginTop: mode==="register"?"14px":"0"}}>
-          <label style={{display:"block",color:C.gray400,fontSize:"12px",fontWeight:600,textTransform:"uppercase",letterSpacing:"1px",marginBottom:"6px"}}>Adresse e-mail</label>
-          <input type="email" placeholder="prenom.nom@exemple.fr" value={form.email} onChange={e=>setForm({...form,email:e.target.value})}
-            onKeyDown={e=>e.key==="Enter"&&(mode==="login"?handleLogin():handleRegister())}
-            style={{width:"100%",padding:"13px 16px",background:"rgba(255,255,255,0.05)",border:`1.5px solid ${error?"rgba(239,68,68,0.6)":"rgba(255,255,255,0.12)"}`,borderRadius:"12px",color:C.white,fontSize:"14px",outline:"none",fontFamily:"'Sora',sans-serif",boxSizing:"border-box",marginBottom:"14px"}}/>
-        </div>
-
-        {mode==="register" && (
-          <div>
-            <label style={{display:"block",color:C.gray400,fontSize:"12px",fontWeight:600,textTransform:"uppercase",letterSpacing:"1px",marginBottom:"6px"}}>Mot de passe</label>
-            <input type="password" placeholder="6 caractères minimum" value={form.password} onChange={e=>setForm({...form,password:e.target.value})}
-              onKeyDown={e=>e.key==="Enter"&&handleRegister()}
-              style={{width:"100%",padding:"13px 16px",background:"rgba(255,255,255,0.05)",border:"1.5px solid rgba(255,255,255,0.12)",borderRadius:"12px",color:C.white,fontSize:"14px",outline:"none",fontFamily:"'Sora',sans-serif",boxSizing:"border-box",marginBottom:"14px"}}/>
-          </div>
-        )}
-
-        {error && <div style={{background:"rgba(239,68,68,0.15)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:"10px",padding:"10px 14px",marginBottom:"14px",color:C.red,fontSize:"13px"}}>⚠️ {error}</div>}
-        {success && <div style={{background:`${C.green}22`,border:`1px solid ${C.green}44`,borderRadius:"10px",padding:"10px 14px",marginBottom:"14px",color:C.green,fontSize:"13px"}}>✅ {success}</div>}
-
-        <button onClick={mode==="login"?handleLogin:handleRegister} disabled={loading}
-          style={{width:"100%",padding:"14px",background:`linear-gradient(135deg,${C.orange},#fb923c)`,border:"none",borderRadius:"13px",color:C.white,fontSize:"15px",fontWeight:700,cursor:"pointer",fontFamily:"'Sora',sans-serif",boxShadow:`0 8px 20px ${C.orange}44`}}>
-          {loading?"…":mode==="login"?"Se connecter":"Créer mon compte"}
-        </button>
-
-        {/* Demo accounts */}
-        {mode==="login" && (
-          <div style={{marginTop:"20px",padding:"12px 14px",background:"rgba(255,255,255,0.04)",borderRadius:"12px",border:"1px solid rgba(255,255,255,0.08)"}}>
-            <p style={{color:C.gray400,fontSize:"11px",margin:"0 0 8px",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.8px"}}>Comptes de démonstration</p>
-            {[
-              {email:"marie.dupont@exemple.fr",role:"USER"},
-              {email:"admin@exemple.fr",role:"ADMIN"},
-            ].map(u=>(
-              <div key={u.email} onClick={()=>setForm(f=>({...f,email:u.email}))} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",cursor:"pointer"}}>
-                <span style={{color:C.gray400,fontSize:"12px"}}>{u.email}</span>
-                <span style={{fontSize:"10px",fontWeight:700,padding:"2px 8px",borderRadius:"20px",background:u.role==="ADMIN"?`${C.orange}22`:`${C.blue}22`,color:u.role==="ADMIN"?C.orange:C.blue}}>{u.role}</span>
+        {/* Register extra fields */}
+        {mode==="register"&&(
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginBottom:"14px"}}>
+            {[["firstName","Prénom","Marie"],["lastName","Nom","Dupont"]].map(([k,label,ph])=>(
+              <div key={k}>
+                <label style={{display:"block",color:C.gray400,fontSize:"11px",fontWeight:600,textTransform:"uppercase",letterSpacing:"1px",marginBottom:"6px"}}>{label}</label>
+                <input placeholder={ph} value={form[k]} onChange={e=>setForm({...form,[k]:e.target.value})}
+                  style={{width:"100%",padding:"12px 14px",background:"rgba(255,255,255,0.05)",border:"1.5px solid rgba(255,255,255,0.12)",borderRadius:"12px",color:C.white,fontSize:"14px",outline:"none",fontFamily:"'Sora',sans-serif",boxSizing:"border-box"}}/>
               </div>
             ))}
           </div>
         )}
+        {/* Email */}
+        <div style={{marginBottom:"14px"}}>
+          <label style={{display:"block",color:C.gray400,fontSize:"11px",fontWeight:600,textTransform:"uppercase",letterSpacing:"1px",marginBottom:"6px"}}>Adresse e-mail</label>
+          <input type="email" placeholder="prenom.nom@exemple.fr" value={form.email} onChange={e=>setForm({...form,email:e.target.value})}
+            onKeyDown={e=>e.key==="Enter"&&(mode==="login"?handleLogin():handleRegister())}
+            style={{width:"100%",padding:"13px 16px",background:"rgba(255,255,255,0.05)",border:`1.5px solid ${error?"rgba(239,68,68,0.6)":"rgba(255,255,255,0.12)"}`,borderRadius:"12px",color:C.white,fontSize:"14px",outline:"none",fontFamily:"'Sora',sans-serif",boxSizing:"border-box"}}/>
+        </div>
+        {/* Password */}
+        <div style={{marginBottom:"20px"}}>
+          <label style={{display:"block",color:C.gray400,fontSize:"11px",fontWeight:600,textTransform:"uppercase",letterSpacing:"1px",marginBottom:"6px"}}>Mot de passe</label>
+          <input type="password" placeholder={mode==="register"?"6 caractères minimum":"••••••••"} value={form.password} onChange={e=>setForm({...form,password:e.target.value})}
+            onKeyDown={e=>e.key==="Enter"&&(mode==="login"?handleLogin():handleRegister())}
+            style={{width:"100%",padding:"13px 16px",background:"rgba(255,255,255,0.05)",border:"1.5px solid rgba(255,255,255,0.12)",borderRadius:"12px",color:C.white,fontSize:"14px",outline:"none",fontFamily:"'Sora',sans-serif",boxSizing:"border-box"}}/>
+        </div>
+        {error&&<div style={{background:"rgba(239,68,68,0.15)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:"10px",padding:"10px 14px",marginBottom:"14px",color:C.red,fontSize:"13px"}}>⚠️ {error}</div>}
+        {success&&<div style={{background:`${C.green}22`,border:`1px solid ${C.green}44`,borderRadius:"10px",padding:"10px 14px",marginBottom:"14px",color:C.green,fontSize:"13px"}}>✅ {success}</div>}
+        <button onClick={mode==="login"?handleLogin:handleRegister} disabled={loading}
+          style={{width:"100%",padding:"14px",background:`linear-gradient(135deg,${C.orange},#fb923c)`,border:"none",borderRadius:"13px",color:C.white,fontSize:"15px",fontWeight:700,cursor:"pointer",fontFamily:"'Sora',sans-serif"}}>
+          {loading?"…":mode==="login"?"Se connecter":"Créer mon compte"}
+        </button>
       </div>
     </div>
   );
@@ -241,50 +214,74 @@ function WeekNav({weekIdx,setWeekIdx}){
 }
 
 // ─── USER APP ─────────────────────────────────────────────────────────────────
-function UserApp({user,menus,reservations,setReservations,onLogout}){
+function UserApp({user,menus,onLogout,showAdminSwitch,onSwitchToAdmin}){
   const [weekIdx,setWeekIdx]=useState(0);
-  const [tab,setTab]=useState("reserver"); // reserver | mesrepas
+  const [tab,setTab]=useState("reserver");
   const [localSel,setLocalSel]=useState({});
+  const [savedRes,setSavedRes]=useState({});
   const [confirmed,setConfirmed]=useState(false);
+  const [loading,setLoading]=useState(false);
   const [now,setNow]=useState(new Date());
 
   const weekKey=WEEKS[weekIdx].key;
   const weekLabel=WEEKS[weekIdx].label;
-  const myRes=(reservations[weekKey]||{})[user.email]||{};
-  const count=Object.keys(localSel).length;
   const cutoffPassed=isCutoffPassed();
   const minutesLeft=cutoffPassed?0:(CUTOFF_HOUR*60+CUTOFF_MINUTE)-(now.getHours()*60+now.getMinutes());
+  const count=Object.keys(localSel).length;
 
   useEffect(()=>{const t=setInterval(()=>setNow(new Date()),30000);return()=>clearInterval(t);},[]);
-  useEffect(()=>{setLocalSel({...(reservations[weekKey]||{})[user.email]||{}});setConfirmed(false);},[weekIdx,reservations]);
+
+  // Load reservations from Supabase
+  useEffect(()=>{
+    const load=async()=>{
+      const {data}=await supabase.from("reservations").select("*").eq("user_email",user.email).eq("week_key",weekKey);
+      if(data){
+        const res={};
+        data.forEach(r=>{res[r.day]={menu:r.menu_key,mode:r.mode};});
+        setSavedRes(res);setLocalSel(res);
+      }else{setSavedRes({});setLocalSel({});}
+    };
+    load();
+  },[weekIdx,user.email]);
 
   const handleSelectMenu=(day,menu)=>{
     if(isDayLocked(day,weekIdx))return;
-    setLocalSel(prev=>{
-      const cur=prev[day];
-      if(cur?.menu===menu){const n={...prev};delete n[day];return n;}
-      return{...prev,[day]:{menu,mode:cur?.mode||"self"}};
-    });
+    setLocalSel(prev=>{const cur=prev[day];if(cur?.menu===menu){const n={...prev};delete n[day];return n;}return{...prev,[day]:{menu,mode:cur?.mode||"self"}};});
   };
   const handleToggleMode=(day)=>{
     if(isDayLocked(day,weekIdx))return;
     setLocalSel(prev=>{if(!prev[day])return prev;return{...prev,[day]:{...prev[day],mode:prev[day].mode==="self"?"emporter":"self"}};});
   };
-  const handleConfirm=()=>{
-    setReservations(prev=>({...prev,[weekKey]:{...(prev[weekKey]||{}),[user.email]:localSel}}));
-    setConfirmed(true);
+
+  const handleConfirm=async()=>{
+    setLoading(true);
+    // Delete old reservations for this week
+    await supabase.from("reservations").delete().eq("user_email",user.email).eq("week_key",weekKey);
+    // Insert new ones
+    const rows=Object.entries(localSel).map(([day,{menu,mode}])=>({
+      user_email:user.email, user_name:user.name, week_key:weekKey, day, menu_key:menu, mode
+    }));
+    if(rows.length>0)await supabase.from("reservations").insert(rows);
+    setSavedRes({...localSel});
+    setLoading(false);setConfirmed(true);
   };
-  const handleCancel=(day)=>{
-    setReservations(prev=>{
-      const updated={...(prev[weekKey]||{})[user.email]||{}};
-      delete updated[day];
-      return{...prev,[weekKey]:{...(prev[weekKey]||{}),[user.email]:updated}};
-    });
+
+  const handleCancel=async(day)=>{
+    await supabase.from("reservations").delete().eq("user_email",user.email).eq("week_key",weekKey).eq("day",day);
+    setSavedRes(prev=>{const n={...prev};delete n[day];return n;});
+    setLocalSel(prev=>{const n={...prev};delete n[day];return n;});
   };
 
   return(
     <div style={{minHeight:"100vh",background:C.gray50,fontFamily:"'Sora',sans-serif",paddingBottom:"100px"}}>
       <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+      {/* Admin switch banner */}
+      {showAdminSwitch&&(
+        <div style={{background:C.navyLight,padding:"8px 16px",display:"flex",alignItems:"center",justifyContent:"center",gap:"10px"}}>
+          <span style={{color:C.gray400,fontSize:"12px"}}>Basculer vers :</span>
+          <button onClick={onSwitchToAdmin} style={{padding:"5px 14px",borderRadius:"8px",border:"none",background:C.orange,color:C.white,fontWeight:700,fontSize:"12px",cursor:"pointer",fontFamily:"'Sora',sans-serif"}}>⚙️ Administration</button>
+        </div>
+      )}
       {/* Header */}
       <div style={{background:C.navy,padding:"18px 18px 0",position:"sticky",top:0,zIndex:10}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px"}}>
@@ -295,7 +292,6 @@ function UserApp({user,menus,reservations,setReservations,onLogout}){
           <button onClick={onLogout} style={{background:"rgba(255,255,255,0.08)",border:"none",color:C.gray400,padding:"7px 12px",borderRadius:"10px",fontSize:"11px",cursor:"pointer",fontFamily:"'Sora',sans-serif"}}>Déconnexion</button>
         </div>
         <WeekNav weekIdx={weekIdx} setWeekIdx={setWeekIdx}/>
-        {/* Cutoff */}
         {weekIdx===0&&(
           <div style={{margin:"10px 0 0",padding:"7px 12px",borderRadius:"10px",background:cutoffPassed?`${C.red}22`:`${C.orange}22`,border:`1px solid ${cutoffPassed?C.red:C.orange}44`,display:"flex",alignItems:"center",gap:"8px"}}>
             <span style={{fontSize:"12px"}}>{cutoffPassed?"🔒":"⏰"}</span>
@@ -304,15 +300,14 @@ function UserApp({user,menus,reservations,setReservations,onLogout}){
             </span>
           </div>
         )}
-        {/* Tabs */}
         <div style={{display:"flex",marginTop:"12px",borderBottom:"1px solid rgba(255,255,255,0.08)"}}>
           {[["reserver","📅 Réserver"],["mesrepas","📋 Mes réservations"]].map(([t,label])=>(
-            <button key={t} onClick={()=>setTab(t)} style={{padding:"10px 16px",border:"none",background:"transparent",color:tab===t?C.orange:C.gray400,fontWeight:tab===t?700:400,fontSize:"12px",cursor:"pointer",fontFamily:"'Sora',sans-serif",borderBottom:`2px solid ${tab===t?C.orange:"transparent"}`,marginBottom:"-1px",transition:"all 0.2s"}}>{label}</button>
+            <button key={t} onClick={()=>{setTab(t);setConfirmed(false);}} style={{padding:"10px 16px",border:"none",background:"transparent",color:tab===t?C.orange:C.gray400,fontWeight:tab===t?700:400,fontSize:"12px",cursor:"pointer",fontFamily:"'Sora',sans-serif",borderBottom:`2px solid ${tab===t?C.orange:"transparent"}`,marginBottom:"-1px"}}>{label}</button>
           ))}
         </div>
       </div>
 
-      {/* TAB: RÉSERVER */}
+      {/* TAB RÉSERVER */}
       {tab==="reserver"&&(
         confirmed?(
           <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"48px 24px",textAlign:"center"}}>
@@ -340,9 +335,7 @@ function UserApp({user,menus,reservations,setReservations,onLogout}){
                   </div>
                   <div style={{display:"flex"}}>
                     {["A","B"].map((mk,i)=>{
-                      const theme=MENU_THEME[mk];
-                      const isSel=sel?.menu===mk;
-                      const m=menus[day][mk];
+                      const theme=MENU_THEME[mk];const isSel=sel?.menu===mk;const m=menus[day][mk];
                       return(
                         <div key={mk} onClick={()=>!locked&&handleSelectMenu(day,mk)} style={{flex:1,padding:"12px 12px 14px",borderRight:i===0?`1px solid ${C.gray100}`:"none",background:isSel?theme.light:"#fff",cursor:locked?"not-allowed":"pointer",borderBottom:`3px solid ${isSel?theme.primary:"transparent"}`}}>
                           <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"8px"}}>
@@ -363,11 +356,7 @@ function UserApp({user,menus,reservations,setReservations,onLogout}){
                     <div style={{padding:"8px 12px 12px",borderTop:`1px solid ${C.gray100}`}}>
                       <div style={{fontSize:"10px",color:C.gray400,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:"6px"}}>Mode</div>
                       <div style={{display:"flex",gap:"7px"}}>
-                        {["self","emporter"].map(m=>{
-                          const mt=MODE_THEME[m];
-                          const active=sel.mode===m;
-                          return(<button key={m} onClick={()=>handleToggleMode(day)} style={{flex:1,padding:"8px",borderRadius:"10px",border:`2px solid ${active?mt.primary:C.gray200}`,background:active?mt.light:C.white,color:active?mt.primary:C.gray400,fontWeight:700,fontSize:"11px",cursor:"pointer",fontFamily:"'Sora',sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:"4px"}}>{mt.icon} {mt.label}</button>);
-                        })}
+                        {["self","emporter"].map(m=>{const mt=MODE_THEME[m];const active=sel.mode===m;return(<button key={m} onClick={()=>handleToggleMode(day)} style={{flex:1,padding:"8px",borderRadius:"10px",border:`2px solid ${active?mt.primary:C.gray200}`,background:active?mt.light:C.white,color:active?mt.primary:C.gray400,fontWeight:700,fontSize:"11px",cursor:"pointer",fontFamily:"'Sora',sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:"4px"}}>{mt.icon} {mt.label}</button>);})}
                       </div>
                     </div>
                   )}
@@ -378,14 +367,14 @@ function UserApp({user,menus,reservations,setReservations,onLogout}){
         )
       )}
 
-      {/* TAB: MES RÉSERVATIONS */}
+      {/* TAB MES RÉSERVATIONS */}
       {tab==="mesrepas"&&(
         <div style={{padding:"20px 16px"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"16px"}}>
             <h2 style={{color:C.navy,fontSize:"17px",fontWeight:700,margin:0}}>Mes réservations</h2>
-            <span style={{color:C.gray400,fontSize:"12px"}}>{Object.keys(myRes).length} repas cette semaine</span>
+            <span style={{color:C.gray400,fontSize:"12px"}}>{Object.keys(savedRes).length} repas</span>
           </div>
-          {Object.keys(myRes).length===0?(
+          {Object.keys(savedRes).length===0?(
             <div style={{textAlign:"center",padding:"48px 24px",color:C.gray400}}>
               <div style={{fontSize:"48px",marginBottom:"12px"}}>📭</div>
               <p style={{fontSize:"14px",margin:"0 0 16px"}}>Aucune réservation pour cette semaine.</p>
@@ -393,27 +382,22 @@ function UserApp({user,menus,reservations,setReservations,onLogout}){
             </div>
           ):(
             <>
-              {DAYS.filter(d=>myRes[d]).map(day=>{
-                const r=myRes[day];
-                const locked=isDayLocked(day,weekIdx);
-                const theme=MENU_THEME[r.menu];
-                const mtheme=MODE_THEME[r.mode];
+              {DAYS.filter(d=>savedRes[d]).map(day=>{
+                const r=savedRes[day];const locked=isDayLocked(day,weekIdx);
                 return(
-                  <div key={day} style={{background:C.white,borderRadius:"16px",padding:"16px",marginBottom:"10px",boxShadow:"0 2px 10px rgba(0,0,0,0.05)",border:`1px solid ${C.gray100}`}}>
+                  <div key={day} style={{background:C.white,borderRadius:"16px",padding:"16px",marginBottom:"10px",boxShadow:"0 2px 10px rgba(0,0,0,0.05)"}}>
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"12px"}}>
                       <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
-                        <div style={{width:"36px",height:"36px",borderRadius:"10px",background:theme.primary,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:"14px"}}>{day.slice(0,2)}</div>
+                        <div style={{width:"36px",height:"36px",borderRadius:"10px",background:MENU_THEME[r.menu].primary,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:"14px"}}>{day.slice(0,2)}</div>
                         <div>
                           <div style={{fontWeight:700,fontSize:"14px",color:C.navy}}>{day}</div>
                           <div style={{display:"flex",gap:"6px",marginTop:"3px"}}>
-                            <span style={{background:theme.light,color:theme.primary,borderRadius:"20px",padding:"2px 10px",fontSize:"11px",fontWeight:700}}>Menu {r.menu}</span>
-                            <span style={{background:mtheme.light,color:mtheme.primary,borderRadius:"20px",padding:"2px 10px",fontSize:"11px",fontWeight:600}}>{mtheme.icon} {mtheme.label}</span>
+                            <span style={{background:MENU_THEME[r.menu].light,color:MENU_THEME[r.menu].primary,borderRadius:"20px",padding:"2px 10px",fontSize:"11px",fontWeight:700}}>Menu {r.menu}</span>
+                            <span style={{background:MODE_THEME[r.mode].light,color:MODE_THEME[r.mode].primary,borderRadius:"20px",padding:"2px 10px",fontSize:"11px",fontWeight:600}}>{MODE_THEME[r.mode].icon} {MODE_THEME[r.mode].label}</span>
                           </div>
                         </div>
                       </div>
-                      {!locked&&(
-                        <button onClick={()=>handleCancel(day)} style={{background:C.redLight,border:`1px solid ${C.red}33`,color:C.red,padding:"6px 12px",borderRadius:"9px",fontSize:"12px",fontWeight:600,cursor:"pointer",fontFamily:"'Sora',sans-serif"}}>Annuler</button>
-                      )}
+                      {!locked&&<button onClick={()=>handleCancel(day)} style={{background:C.redLight,border:`1px solid ${C.red}33`,color:C.red,padding:"6px 12px",borderRadius:"9px",fontSize:"12px",fontWeight:600,cursor:"pointer",fontFamily:"'Sora',sans-serif"}}>Annuler</button>}
                       {locked&&<span style={{fontSize:"11px",color:C.gray400}}>🔒</span>}
                     </div>
                     <div style={{background:C.gray50,borderRadius:"10px",padding:"10px 12px"}}>
@@ -427,11 +411,7 @@ function UserApp({user,menus,reservations,setReservations,onLogout}){
                   </div>
                 );
               })}
-              <div style={{marginTop:"16px",background:C.navyLight,borderRadius:"14px",padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <span style={{color:C.gray400,fontSize:"13px"}}>Total réservé</span>
-                <span style={{color:C.white,fontWeight:800,fontSize:"18px"}}>{Object.keys(myRes).length} / {DAYS.length} repas</span>
-              </div>
-              {Object.keys(myRes).length<DAYS.length&&(
+              {Object.keys(savedRes).length<DAYS.length&&(
                 <button onClick={()=>setTab("reserver")} style={{width:"100%",marginTop:"10px",padding:"13px",background:`linear-gradient(135deg,${C.orange},#fb923c)`,border:"none",borderRadius:"13px",color:C.white,fontWeight:700,fontSize:"14px",cursor:"pointer",fontFamily:"'Sora',sans-serif"}}>+ Ajouter des repas</button>
               )}
             </>
@@ -439,12 +419,11 @@ function UserApp({user,menus,reservations,setReservations,onLogout}){
         </div>
       )}
 
-      {/* Bottom CTA confirm */}
+      {/* CTA confirm */}
       {tab==="reserver"&&!confirmed&&count>0&&(
         <div style={{position:"fixed",bottom:0,left:0,right:0,padding:"14px 16px 22px",background:`linear-gradient(to top,${C.gray50} 75%,transparent)`}}>
-          <button onClick={handleConfirm} style={{width:"100%",padding:"15px",background:`linear-gradient(135deg,${C.navy},${C.navyLight})`,border:"none",borderRadius:"15px",color:"#fff",fontSize:"14px",fontWeight:700,cursor:"pointer",fontFamily:"'Sora',sans-serif",boxShadow:"0 8px 24px rgba(15,23,42,0.3)",display:"flex",alignItems:"center",justifyContent:"center",gap:"10px"}}>
-            Confirmer {count} réservation{count>1?"s":""}
-            <span style={{background:C.orange,borderRadius:"20px",padding:"2px 12px",fontSize:"13px"}}>→</span>
+          <button onClick={handleConfirm} disabled={loading} style={{width:"100%",padding:"15px",background:`linear-gradient(135deg,${C.navy},${C.navyLight})`,border:"none",borderRadius:"15px",color:"#fff",fontSize:"14px",fontWeight:700,cursor:"pointer",fontFamily:"'Sora',sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:"10px"}}>
+            {loading?"Enregistrement…":<>Confirmer {count} réservation{count>1?"s":""}<span style={{background:C.orange,borderRadius:"20px",padding:"2px 12px",fontSize:"13px"}}>→</span></>}
           </button>
         </div>
       )}
@@ -453,34 +432,75 @@ function UserApp({user,menus,reservations,setReservations,onLogout}){
 }
 
 // ─── ADMIN DASHBOARD ──────────────────────────────────────────────────────────
-function AdminDashboard({user,menus,setMenus,reservations,setReservations,users,setUsers,onLogout}){
+function AdminDashboard({user,menus,setMenus,onLogout,showUserSwitch,onSwitchToUser}){
   const [weekIdx,setWeekIdx]=useState(0);
   const [activeDay,setActiveDay]=useState(DAYS[0]);
   const [editing,setEditing]=useState(null);
   const [activeTab,setActiveTab]=useState("overview");
   const [emailSent,setEmailSent]=useState(false);
+  const [weekRes,setWeekRes]=useState({});
+  const [users,setUsers]=useState([]);
+  const [loadingData,setLoadingData]=useState(true);
+
   const weekKey=WEEKS[weekIdx].key;
   const weekLabel=WEEKS[weekIdx].label;
-  const weekRes=reservations[weekKey]||{};
   const stats=computeStats(weekRes);
   const total=stats.totalA+stats.totalB;
-  const realUsers=users.filter(u=>u.role==="user");
+  const realUsers=users.filter(u=>u.role==="user"||u.role==="both");
 
-  const handleSendEmail=()=>{
-    alert(`📧 Simulation d'envoi e-mail\n\nDans la version connectée, un récapitulatif serait envoyé automatiquement à ${user.email} chaque jour à ${formatCutoff()}.\n\nUtilisez les boutons Imprimer / PDF / Excel pour exporter maintenant.`);
-    setEmailSent(true);setTimeout(()=>setEmailSent(false),3000);
+  // Load reservations
+  useEffect(()=>{
+    const load=async()=>{
+      setLoadingData(true);
+      const {data}=await supabase.from("reservations").select("*").eq("week_key",weekKey);
+      if(data){
+        const res={};
+        data.forEach(r=>{if(!res[r.user_email])res[r.user_email]={};res[r.user_email][r.day]={menu:r.menu_key,mode:r.mode};});
+        setWeekRes(res);
+      }
+      setLoadingData(false);
+    };
+    load();
+  },[weekIdx]);
+
+  // Load users
+  useEffect(()=>{
+    const load=async()=>{
+      const {data}=await supabase.from("profiles").select("*");
+      if(data)setUsers(data);
+    };
+    load();
+  },[]);
+
+  const handleToggleAdmin=async(u)=>{
+    const newRole=u.role==="user"?"both":u.role==="both"?"user":u.role==="admin"?"both":"user";
+    await supabase.from("profiles").update({role:newRole}).eq("id",u.id);
+    setUsers(prev=>prev.map(p=>p.id===u.id?{...p,role:newRole}:p));
+  };
+
+  const handleSaveMenu=async(day,menuKey,form)=>{
+    setMenus(p=>({...p,[day]:{...p[day],[menuKey]:form}}));
+    // Save to Supabase
+    await supabase.from("menus").upsert({week_label:weekLabel,day,menu_key:menuKey,starter:form.starter,main_course:form.main,dessert:form.dessert},{onConflict:"week_label,day,menu_key"});
+    setEditing(null);
   };
 
   return(
     <div style={{minHeight:"100vh",background:C.gray50,fontFamily:"'Sora',sans-serif",display:"flex",flexDirection:"column"}}>
       <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+      {showUserSwitch&&(
+        <div style={{background:C.navyLight,padding:"8px 16px",display:"flex",alignItems:"center",justifyContent:"center",gap:"10px",borderBottom:"1px solid rgba(255,255,255,0.08)"}}>
+          <span style={{color:C.gray400,fontSize:"12px"}}>Basculer vers :</span>
+          <button onClick={onSwitchToUser} style={{padding:"5px 14px",borderRadius:"8px",border:"none",background:C.orange,color:C.white,fontWeight:700,fontSize:"12px",cursor:"pointer",fontFamily:"'Sora',sans-serif"}}>👤 Mes repas</button>
+        </div>
+      )}
       {/* Topbar */}
       <div style={{background:C.navy,padding:"0 32px",display:"flex",alignItems:"center",justifyContent:"space-between",height:"64px",flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",gap:"12px"}}>
           <div style={{width:"36px",height:"36px",borderRadius:"10px",background:`linear-gradient(135deg,${C.orange},#fb923c)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"18px"}}>🍽️</div>
           <div>
             <div style={{color:C.white,fontWeight:700,fontSize:"15px"}}>Self-Service Admin</div>
-            <div style={{color:C.gray400,fontSize:"11px"}}>Limite : {formatCutoff()} · {isCutoffPassed()?"🔒 Closes":"🟢 Ouvertes"} · {realUsers.length} convive{realUsers.length>1?"s":""}</div>
+            <div style={{color:C.gray400,fontSize:"11px"}}>Limite : {formatCutoff()} · {isCutoffPassed()?"🔒 Closes":"🟢 Ouvertes"}</div>
           </div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:"16px"}}>
@@ -500,24 +520,24 @@ function AdminDashboard({user,menus,setMenus,reservations,setReservations,users,
           <div style={{marginTop:"24px",borderTop:"1px solid rgba(255,255,255,0.08)",paddingTop:"20px"}}>
             <div style={{color:C.gray400,fontSize:"10px",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:"10px"}}>Actions</div>
             {[
-              {icon:"🖨️",label:"Imprimer",onClick:()=>printRecap(weekLabel,weekRes,users)},
-              {icon:"📄",label:"Export PDF",onClick:()=>{const h=buildRecapHTML(weekLabel,weekRes,users);downloadFile(h,`recap-${weekKey}.html`,"text/html");}},
-              {icon:"📊",label:"Export Excel",onClick:()=>{const c=exportCSV(weekLabel,weekRes,users);downloadFile("\uFEFF"+c,`recap-${weekKey}.csv`,"text/csv;charset=utf-8");}},
-              {icon:emailSent?"✅":"📧",label:emailSent?"Envoyé !":"Envoyer récap",onClick:handleSendEmail},
+              {icon:"🖨️",label:"Imprimer",fn:()=>printRecap(weekLabel,weekRes,users)},
+              {icon:"📄",label:"Export PDF",fn:()=>{downloadFile(buildRecapHTML(weekLabel,weekRes,users),`recap-${weekKey}.html`,"text/html");}},
+              {icon:"📊",label:"Export Excel",fn:()=>{downloadFile("\uFEFF"+exportCSV(weekLabel,weekRes,users),`recap-${weekKey}.csv`,"text/csv;charset=utf-8");}},
+              {icon:emailSent?"✅":"📧",label:emailSent?"Envoyé !":"Envoyer récap",fn:()=>{alert(`📧 Récapitulatif : dans la version finale, un e-mail serait envoyé à ${user.email} chaque jour à ${formatCutoff()}.`);setEmailSent(true);setTimeout(()=>setEmailSent(false),3000);}},
             ].map(a=>(
-              <button key={a.label} onClick={a.onClick} style={{width:"100%",display:"flex",alignItems:"center",gap:"10px",padding:"10px 14px",borderRadius:"12px",background:"transparent",border:"1px solid rgba(255,255,255,0.1)",color:emailSent&&a.label==="Envoyé !"?C.green:C.gray400,fontSize:"12px",cursor:"pointer",fontFamily:"'Sora',sans-serif",marginBottom:"6px"}}>{a.icon} {a.label}</button>
+              <button key={a.label} onClick={a.fn} style={{width:"100%",display:"flex",alignItems:"center",gap:"10px",padding:"10px 14px",borderRadius:"12px",background:"transparent",border:"1px solid rgba(255,255,255,0.1)",color:C.gray400,fontSize:"12px",cursor:"pointer",fontFamily:"'Sora',sans-serif",marginBottom:"6px"}}>{a.icon} {a.label}</button>
             ))}
           </div>
         </div>
 
         {/* Main */}
         <div style={{flex:1,overflowY:"auto",padding:"32px"}}>
+          {loadingData&&<div style={{textAlign:"center",padding:"48px",color:C.gray400}}>Chargement…</div>}
 
-          {activeTab==="overview"&&(
+          {!loadingData&&activeTab==="overview"&&(
             <div>
               <h2 style={{color:C.navy,fontSize:"22px",fontWeight:700,margin:"0 0 6px"}}>Vue d'ensemble</h2>
               <p style={{color:C.gray400,fontSize:"13px",margin:"0 0 24px"}}>{weekLabel}</p>
-              {/* KPIs */}
               <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:"14px",marginBottom:"28px"}}>
                 {[{label:"Total",value:total,icon:"🍽️",color:C.navy},{label:"Menu A",value:stats.totalA,icon:"🟠",color:C.orange},{label:"Menu B",value:stats.totalB,icon:"🔵",color:C.blue},{label:"Sur place",value:stats.totalSelf,icon:"🏠",color:C.green},{label:"À emporter",value:stats.totalEmporter,icon:"🥡",color:C.purple},{label:"Convives",value:realUsers.length,icon:"👤",color:C.gray600}].map(k=>(
                   <div key={k.label} style={{background:C.white,borderRadius:"16px",padding:"18px 16px",boxShadow:"0 2px 10px rgba(0,0,0,0.05)",borderTop:`3px solid ${k.color}`}}>
@@ -527,15 +547,12 @@ function AdminDashboard({user,menus,setMenus,reservations,setReservations,users,
                   </div>
                 ))}
               </div>
-              {/* Export bar */}
               <div style={{background:C.white,borderRadius:"14px",padding:"14px 20px",marginBottom:"24px",boxShadow:"0 2px 10px rgba(0,0,0,0.05)",display:"flex",alignItems:"center",gap:"10px",flexWrap:"wrap"}}>
                 <span style={{fontSize:"13px",fontWeight:600,color:C.navy}}>📤 Exporter :</span>
                 <button onClick={()=>printRecap(weekLabel,weekRes,users)} style={{padding:"7px 14px",borderRadius:"9px",border:`1.5px solid ${C.navy}`,background:C.white,color:C.navy,fontWeight:600,fontSize:"12px",cursor:"pointer",fontFamily:"'Sora',sans-serif"}}>🖨️ Imprimer</button>
-                <button onClick={()=>{const h=buildRecapHTML(weekLabel,weekRes,users);downloadFile(h,`recap-${weekKey}.html`,"text/html");}} style={{padding:"7px 14px",borderRadius:"9px",border:`1.5px solid ${C.red}`,background:C.white,color:C.red,fontWeight:600,fontSize:"12px",cursor:"pointer",fontFamily:"'Sora',sans-serif"}}>📄 PDF</button>
-                <button onClick={()=>{const c=exportCSV(weekLabel,weekRes,users);downloadFile("\uFEFF"+c,`recap-${weekKey}.csv`,"text/csv;charset=utf-8");}} style={{padding:"7px 14px",borderRadius:"9px",border:`1.5px solid ${C.green}`,background:C.white,color:C.green,fontWeight:600,fontSize:"12px",cursor:"pointer",fontFamily:"'Sora',sans-serif"}}>📊 Excel</button>
-                <button onClick={handleSendEmail} style={{padding:"7px 14px",borderRadius:"9px",border:`1.5px solid ${emailSent?C.green:C.orange}`,background:emailSent?C.greenLight:C.white,color:emailSent?C.green:C.orange,fontWeight:600,fontSize:"12px",cursor:"pointer",fontFamily:"'Sora',sans-serif"}}>{emailSent?"✅ Envoyé !":"📧 E-mail"}</button>
+                <button onClick={()=>{downloadFile(buildRecapHTML(weekLabel,weekRes,users),`recap-${weekKey}.html`,"text/html");}} style={{padding:"7px 14px",borderRadius:"9px",border:`1.5px solid ${C.red}`,background:C.white,color:C.red,fontWeight:600,fontSize:"12px",cursor:"pointer",fontFamily:"'Sora',sans-serif"}}>📄 PDF</button>
+                <button onClick={()=>{downloadFile("\uFEFF"+exportCSV(weekLabel,weekRes,users),`recap-${weekKey}.csv`,"text/csv;charset=utf-8");}} style={{padding:"7px 14px",borderRadius:"9px",border:`1.5px solid ${C.green}`,background:C.white,color:C.green,fontWeight:600,fontSize:"12px",cursor:"pointer",fontFamily:"'Sora',sans-serif"}}>📊 Excel</button>
               </div>
-              {/* Table */}
               <div style={{background:C.white,borderRadius:"20px",padding:"24px 28px",boxShadow:"0 2px 12px rgba(0,0,0,0.06)"}}>
                 <h3 style={{color:C.navy,fontSize:"15px",fontWeight:700,margin:"0 0 20px"}}>Détail par jour</h3>
                 <table style={{width:"100%",borderCollapse:"collapse"}}>
@@ -544,7 +561,7 @@ function AdminDashboard({user,menus,setMenus,reservations,setReservations,users,
                     {DAYS.map((day,i)=>{
                       const d=stats.byDay[day];const tot=d.A+d.B;const pA=tot?Math.round(d.A/tot*100):0;
                       return(<tr key={day} style={{background:i%2===0?C.white:C.gray50}}>
-                        <td style={{padding:"12px 14px",fontWeight:600,fontSize:"14px",color:C.navy}}>{day}{isDayLocked(day,weekIdx)&&weekIdx===0&&" 🔒"}</td>
+                        <td style={{padding:"12px 14px",fontWeight:600,fontSize:"14px",color:C.navy}}>{day}</td>
                         <td style={{padding:"12px 14px",textAlign:"center"}}><span style={{padding:"4px 10px",background:`${C.orange}18`,color:C.orange,borderRadius:"20px",fontWeight:700}}>{d.A}</span></td>
                         <td style={{padding:"12px 14px",textAlign:"center"}}><span style={{padding:"4px 10px",background:`${C.blue}18`,color:C.blue,borderRadius:"20px",fontWeight:700}}>{d.B}</span></td>
                         <td style={{padding:"12px 14px",textAlign:"center"}}><span style={{padding:"4px 10px",background:`${C.green}18`,color:C.green,borderRadius:"20px",fontWeight:700}}>{d.self}</span></td>
@@ -560,7 +577,7 @@ function AdminDashboard({user,menus,setMenus,reservations,setReservations,users,
             </div>
           )}
 
-          {activeTab==="menus"&&(
+          {!loadingData&&activeTab==="menus"&&(
             <div>
               <h2 style={{color:C.navy,fontSize:"22px",fontWeight:700,margin:"0 0 6px"}}>Gérer les menus</h2>
               <p style={{color:C.gray400,fontSize:"13px",margin:"0 0 20px"}}>{weekLabel}</p>
@@ -593,10 +610,10 @@ function AdminDashboard({user,menus,setMenus,reservations,setReservations,users,
             </div>
           )}
 
-          {activeTab==="users"&&(
+          {!loadingData&&activeTab==="users"&&(
             <div>
               <h2 style={{color:C.navy,fontSize:"22px",fontWeight:700,margin:"0 0 6px"}}>Réservations — {weekLabel}</h2>
-              <p style={{color:C.gray400,fontSize:"13px",margin:"0 0 20px"}}>{realUsers.length} convive{realUsers.length>1?"s":""} inscrits</p>
+              <p style={{color:C.gray400,fontSize:"13px",margin:"0 0 20px"}}>{realUsers.length} convive{realUsers.length>1?"s":""}</p>
               <div style={{background:C.white,borderRadius:"20px",boxShadow:"0 2px 12px rgba(0,0,0,0.06)",overflow:"hidden"}}>
                 <div style={{display:"grid",gridTemplateColumns:"200px repeat(5,1fr) 70px",background:C.gray50,borderBottom:`1px solid ${C.gray100}`,padding:"12px 20px"}}>
                   <div style={{fontSize:"11px",color:C.gray400,fontWeight:700,textTransform:"uppercase"}}>Convive</div>
@@ -615,28 +632,19 @@ function AdminDashboard({user,menus,setMenus,reservations,setReservations,users,
             </div>
           )}
 
-          {activeTab==="manage"&&(
+          {!loadingData&&activeTab==="manage"&&(
             <div>
               <h2 style={{color:C.navy,fontSize:"22px",fontWeight:700,margin:"0 0 6px"}}>Gérer les utilisateurs</h2>
-              <p style={{color:C.gray400,fontSize:"13px",margin:"0 0 24px"}}>{users.filter(u=>u.email!==user.email).length} compte{users.filter(u=>u.email!==user.email).length>1?"s":""} enregistrés</p>
+              <p style={{color:C.gray400,fontSize:"13px",margin:"0 0 24px"}}>{users.filter(u=>u.email!==user.email).length} compte(s) enregistré(s)</p>
               <div style={{background:C.white,borderRadius:"20px",boxShadow:"0 2px 12px rgba(0,0,0,0.06)",overflow:"hidden"}}>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 200px 160px",background:C.gray50,borderBottom:`1px solid ${C.gray100}`,padding:"12px 24px"}}>
                   <div style={{fontSize:"11px",color:C.gray400,fontWeight:700,textTransform:"uppercase"}}>Utilisateur</div>
-                  <div style={{fontSize:"11px",color:C.gray400,fontWeight:700,textTransform:"uppercase",textAlign:"center"}}>Rôles actuels</div>
+                  <div style={{fontSize:"11px",color:C.gray400,fontWeight:700,textTransform:"uppercase",textAlign:"center"}}>Rôles</div>
                   <div style={{fontSize:"11px",color:C.gray400,fontWeight:700,textTransform:"uppercase",textAlign:"center"}}>Action</div>
                 </div>
                 {users.filter(u=>u.email!==user.email).map((u,i)=>{
                   const isAdmin=u.role==="admin"||u.role==="both";
                   const isUser=u.role==="user"||u.role==="both";
-                  const toggleAdmin=()=>{
-                    setUsers(prev=>prev.map(p=>{
-                      if(p.email!==u.email)return p;
-                      if(p.role==="user")return{...p,role:"both"};
-                      if(p.role==="both")return{...p,role:"user"};
-                      if(p.role==="admin")return{...p,role:"both"};
-                      return p;
-                    }));
-                  };
                   return(
                     <div key={u.email} style={{display:"grid",gridTemplateColumns:"1fr 200px 160px",padding:"14px 24px",alignItems:"center",background:i%2===0?C.white:C.gray50,borderBottom:`1px solid ${C.gray100}`}}>
                       <div>
@@ -644,11 +652,11 @@ function AdminDashboard({user,menus,setMenus,reservations,setReservations,users,
                         <div style={{fontSize:"12px",color:C.gray400,marginTop:"2px"}}>{u.email}</div>
                       </div>
                       <div style={{display:"flex",gap:"6px",justifyContent:"center",flexWrap:"wrap"}}>
-                        <span style={{padding:"3px 10px",borderRadius:"20px",background:isUser?`${C.blue}18`:C.gray100,color:isUser?C.blue:C.gray400,fontWeight:700,fontSize:"11px",border:`1px solid ${isUser?C.blue+"33":C.gray200}`}}>👤 Utilisateur</span>
-                        <span style={{padding:"3px 10px",borderRadius:"20px",background:isAdmin?`${C.orange}18`:C.gray100,color:isAdmin?C.orange:C.gray400,fontWeight:700,fontSize:"11px",border:`1px solid ${isAdmin?C.orange+"33":C.gray200}`}}>⚙️ Admin</span>
+                        <span style={{padding:"3px 10px",borderRadius:"20px",background:isUser?`${C.blue}18`:C.gray100,color:isUser?C.blue:C.gray400,fontWeight:700,fontSize:"11px"}}>👤 User</span>
+                        <span style={{padding:"3px 10px",borderRadius:"20px",background:isAdmin?`${C.orange}18`:C.gray100,color:isAdmin?C.orange:C.gray400,fontWeight:700,fontSize:"11px"}}>⚙️ Admin</span>
                       </div>
                       <div style={{textAlign:"center"}}>
-                        <button onClick={toggleAdmin} style={{padding:"8px 14px",borderRadius:"10px",border:`1.5px solid ${isAdmin?C.red:C.orange}`,background:isAdmin?C.redLight:C.orangeLight,color:isAdmin?C.red:C.orange,fontWeight:700,fontSize:"12px",cursor:"pointer",fontFamily:"'Sora',sans-serif",whiteSpace:"nowrap"}}>
+                        <button onClick={()=>handleToggleAdmin(u)} style={{padding:"8px 14px",borderRadius:"10px",border:`1.5px solid ${isAdmin?C.red:C.orange}`,background:isAdmin?C.redLight:C.orangeLight,color:isAdmin?C.red:C.orange,fontWeight:700,fontSize:"12px",cursor:"pointer",fontFamily:"'Sora',sans-serif"}}>
                           {isAdmin?"Retirer admin":"Nommer admin"}
                         </button>
                       </div>
@@ -656,18 +664,18 @@ function AdminDashboard({user,menus,setMenus,reservations,setReservations,users,
                   );
                 })}
               </div>
-              <div style={{marginTop:"16px",background:C.navyLight,borderRadius:"14px",padding:"14px 18px",display:"flex",gap:"10px",alignItems:"flex-start"}}>
+              <div style={{marginTop:"16px",background:C.navyLight,borderRadius:"14px",padding:"14px 18px",display:"flex",gap:"10px"}}>
                 <span style={{fontSize:"18px"}}>💡</span>
                 <div style={{color:C.gray400,fontSize:"12px",lineHeight:1.6}}>
-                  Un utilisateur avec le rôle <strong style={{color:C.white}}>Admin</strong> accède au dashboard administrateur.<br/>
-                  Un utilisateur avec les <strong style={{color:C.white}}>deux rôles</strong> peut basculer entre réserver ses repas et administrer l'application.
+                  <strong style={{color:C.white}}>Admin</strong> : accès au dashboard uniquement.<br/>
+                  <strong style={{color:C.white}}>Les deux rôles</strong> : peut réserver ses repas ET administrer.
                 </div>
               </div>
             </div>
           )}
         </div>
       </div>
-      {editing&&<EditModal day={editing.day} menuKey={editing.menuKey} data={menus[editing.day][editing.menuKey]} onSave={form=>{setMenus(p=>({...p,[editing.day]:{...p[editing.day],[editing.menuKey]:form}}));setEditing(null);}} onClose={()=>setEditing(null)}/>}
+      {editing&&<EditModal day={editing.day} menuKey={editing.menuKey} data={menus[editing.day][editing.menuKey]} onSave={form=>handleSaveMenu(editing.day,editing.menuKey,form)} onClose={()=>setEditing(null)}/>}
     </div>
   );
 }
@@ -675,55 +683,65 @@ function AdminDashboard({user,menus,setMenus,reservations,setReservations,users,
 // ─── ROOT ─────────────────────────────────────────────────────────────────────
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
-  const [view, setView] = useState("user"); // "user" | "admin"
+  const [view, setView] = useState("user");
   const [menus, setMenus] = useState(DEFAULT_MENUS);
-  const [reservations, setReservations] = useState({
-    "2025-W23":{
-      "marie.dupont@exemple.fr":{Lundi:{menu:"A",mode:"self"},Mardi:{menu:"B",mode:"emporter"},Mercredi:{menu:"A",mode:"self"},Jeudi:{menu:"A",mode:"self"}},
-      "thomas.martin@exemple.fr":{Lundi:{menu:"B",mode:"emporter"},Mardi:{menu:"A",mode:"self"},Vendredi:{menu:"B",mode:"self"}},
-    },
-    "2025-W24":{}, "2025-W25":{},
-  });
-  const [users, setUsers] = useState([
-    {email:"marie.dupont@exemple.fr",  name:"Marie Dupont",  role:"user"},
-    {email:"thomas.martin@exemple.fr", name:"Thomas Martin", role:"user"},
-    {email:"admin@exemple.fr",         name:"Administrateur",role:"admin"},
-  ]);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  // Check existing session on load
+  useEffect(()=>{
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        const { data: profile } = await supabase.from("profiles").select("*").eq("id", session.user.id).single();
+        if (profile) {
+          setCurrentUser({ ...profile, id: session.user.id });
+          setView(profile.role==="user" ? "user" : "admin");
+        }
+      }
+      setAuthLoading(false);
+    };
+    checkSession();
+  },[]);
 
   const handleLogin = (user) => {
     setCurrentUser(user);
     setView(user.role==="user" ? "user" : "admin");
   };
 
-  if (!currentUser) return <AuthScreen users={users} setUsers={setUsers} onLogin={handleLogin}/>;
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setCurrentUser(null);
+  };
+
+  if (authLoading) return (
+    <div style={{minHeight:"100vh",background:C.navy,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Sora',sans-serif"}}>
+      <div style={{textAlign:"center"}}>
+        <div style={{fontSize:"48px",marginBottom:"16px"}}>🍽️</div>
+        <div style={{color:C.gray400,fontSize:"14px"}}>Chargement…</div>
+      </div>
+    </div>
+  );
+
+  if (!currentUser) return <AuthScreen onLogin={handleLogin}/>;
 
   const isBoth = currentUser.role==="both";
   const isAdmin = currentUser.role==="admin" || currentUser.role==="both";
 
-  // Role switcher banner for dual-role users
-  const RoleSwitcher = () => isBoth ? (
-    <div style={{background:"#1E293B",padding:"8px 16px",display:"flex",alignItems:"center",justifyContent:"center",gap:"10px",borderBottom:"1px solid rgba(255,255,255,0.08)",fontFamily:"'Sora',sans-serif"}}>
-      <span style={{color:"#94A3B8",fontSize:"12px"}}>Basculer vers :</span>
-      <button onClick={()=>setView("user")} style={{padding:"6px 14px",borderRadius:"8px",border:"none",background:view==="user"?"#F97316":"rgba(255,255,255,0.08)",color:"#fff",fontWeight:700,fontSize:"12px",cursor:"pointer",fontFamily:"'Sora',sans-serif"}}>
-        👤 Mes repas
-      </button>
-      <button onClick={()=>setView("admin")} style={{padding:"6px 14px",borderRadius:"8px",border:"none",background:view==="admin"?"#F97316":"rgba(255,255,255,0.08)",color:"#fff",fontWeight:700,fontSize:"12px",cursor:"pointer",fontFamily:"'Sora',sans-serif"}}>
-        ⚙️ Administration
-      </button>
-    </div>
-  ) : null;
-
   if (isAdmin && view==="admin") return (
-    <div>
-      <RoleSwitcher/>
-      <AdminDashboard user={currentUser} menus={menus} setMenus={setMenus} reservations={reservations} setReservations={setReservations} users={users} setUsers={setUsers} onLogout={()=>setCurrentUser(null)}/>
-    </div>
+    <AdminDashboard
+      user={currentUser} menus={menus} setMenus={setMenus}
+      onLogout={handleLogout}
+      showUserSwitch={isBoth}
+      onSwitchToUser={()=>setView("user")}
+    />
   );
 
   return (
-    <div>
-      <RoleSwitcher/>
-      <UserApp user={currentUser} menus={menus} reservations={reservations} setReservations={setReservations} onLogout={()=>setCurrentUser(null)}/>
-    </div>
+    <UserApp
+      user={currentUser} menus={menus}
+      onLogout={handleLogout}
+      showAdminSwitch={isBoth||isAdmin}
+      onSwitchToAdmin={()=>setView("admin")}
+    />
   );
 }
